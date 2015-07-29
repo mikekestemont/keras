@@ -1,7 +1,149 @@
 from ..layers.core import Layer, MaskedLayer
 from ..utils.theano_utils import shared_zeros, shared_ones, sharedX
+from .. import activations, initializations, regularizers, constraints
+import theano
 import theano.tensor as T
 import numpy as np
+
+
+class HierarchicalSoftmax(Layer):
+    '''
+        Implements a 2-level hierarchical softmax to speed up
+        classification problems with a large number of output classes.
+        Adapted to run on both GPU and CPU from lisa-groundhog:
+        https://github.com/lisa-groundhog/GroundHog/blob/master/groundhog/layers/cost_layers.py
+    '''
+    def __init__(self, input_dim, output_dim, init='glorot_uniform', activation='linear',
+                 weights=None, name=None, W_regularizer=None, b_regularizer=None,
+                 activity_regularizer=None, W_constraint=None, b_constraint=None):
+
+        super(HierarchicalSoftmax, self).__init__()
+        self.init = initializations.get(init)
+        self.activation = activations.get(activation)
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+        self.input = T.matrix()
+
+        # level 1:
+        self.level1_dim = np.ceil(np.sqrt(self.output_dim)).astype('int64')
+        self.W1 = self.init((self.input_dim, self.level1_dim))
+        self.b1 = shared_zeros((self.level1_dim))
+
+        # level 2:
+        self.level2_dim = np.ceil(self.output_dim/float(self.level1_dim)).astype('int64')
+        self.W2 = self.init((self.input_dim, self.level2_dim))
+        self.b2 = shared_zeros((self.level2_dim))
+
+        self.params = [self.W1, self.b1, self.W2, self.b2]
+
+        self.regularizers = []
+
+        self.W1_regularizer = regularizers.get(W_regularizer)
+        self.W2_regularizer = regularizers.get(W_regularizer)
+
+        if self.W1_regularizer:
+            self.W1_regularizer.set_param(self.W1)
+            self.regularizers.append(self.W1_regularizer)
+            self.W2_regularizer.set_param(self.W2)
+            self.regularizers.append(self.W2_regularizer)
+
+        self.b1_regularizer = regularizers.get(b_regularizer)
+        self.b2_regularizer = regularizers.get(b_regularizer)
+
+        if self.b1_regularizer:
+            self.b1_regularizer.set_param(self.b1)
+            self.regularizers.append(self.b1_regularizer)
+            self.b2_regularizer.set_param(self.b2)
+            self.regularizers.append(self.b2_regularizer)
+
+        self.activity_regularizer = regularizers.get(activity_regularizer)
+        if self.activity_regularizer:
+            self.activity_regularizer.set_layer(self)
+            self.regularizers.append(self.activity_regularizer)
+
+        self.W1_constraint = constraints.get(W_constraint)
+        self.W2_constraint = constraints.get(W_constraint)
+        self.b1_constraint = constraints.get(b_constraint)
+        self.b2_constraint = constraints.get(b_constraint)
+
+        self.constraints = [self.W1_constraint, self.b1_constraint, self.W2_constraint, self.b2_constraint]
+
+        if weights is not None:
+            self.set_weights(weights)
+
+        if name is not None:
+            self.set_name(name)
+
+    def set_name(self, name):
+        self.W1.name = '%s_W1' % name
+        self.b1.name = '%s_b1' % name
+        self.W2.name = '%s_W2' % name
+        self.b2.name = '%s_b2' % name
+
+    def get_output(self, train=False):
+
+        X = self.get_input(train)
+
+        # We assume that, on a previous merge layer (with mode="concat"),
+        # the true labels have been appended at the end of the data matrix
+        # for training. At test time, these will be ignored.
+        X, y_true = X[:,:-1], T.cast(X[:,-1], 'int8')
+
+        # propagate input to both levels:
+        lev1_activs = self.activation(T.dot(X, self.W1) + self.b1) # (bs x self.level1_dim)
+        lev2_activs = self.activation(T.dot(X, self.W2) + self.b2) # (bs x self.level2_dim)
+
+        batch_size = X.shape[0]
+
+        if train:
+
+            # we assign a unique path through the graph for each class label:
+            level1_idx = y_true // self.level1_dim
+            level2_idx = y_true % self.level2_dim
+
+            # select relevant activation column:
+            lev1_val = lev1_activs[T.arange(batch_size), level1_idx]
+            lev2_val = lev2_activs[T.arange(batch_size), level2_idx]
+
+            # multiply the cost
+            target_probas = lev1_val * lev2_val
+
+            # output is a matrix of predictions, with dimensionality (batch_size, n_out).
+            # Since we only have a probability for the correct label,
+            # we assign a probability of zero to all other labels
+            output = T.zeros((batch_size, self.output_dim))
+            
+            output = T.set_subtensor(output[T.arange(batch_size), y_true], target_probas)
+
+        else:
+
+            def _path_probas(idx):
+                lev1_vec, lev2_vec = lev1_activs[idx], lev2_activs[idx]
+                result, updates = theano.scan(fn=lambda k, array_: k * array_,
+                                          sequences=lev1_vec,
+                                          non_sequences=lev2_vec)
+                return result.flatten()
+
+            output, updates = theano.scan(fn=_path_probas,
+                                   sequences=T.arange(batch_size))
+
+            output[:, :self.output_dim] # truncate superfluous paths
+
+        return output
+        
+
+    def get_config(self):
+        return {"name": self.__class__.__name__,
+                "input_dim": self.input_dim,
+                "output_dim": self.output_dim,
+                "init": self.init.__name__,
+                "activation": self.activation.__name__,
+                "W_regularizer": self.W_regularizer.get_config() if self.W_regularizer else None,
+                "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
+                "activity_regularizer": self.activity_regularizer.get_config() if self.activity_regularizer else None,
+                "W_constraint": self.W_constraint.get_config() if self.W_constraint else None,
+                "b_constraint": self.b_constraint.get_config() if self.b_constraint else None}
 
 
 class LeakyReLU(MaskedLayer):
