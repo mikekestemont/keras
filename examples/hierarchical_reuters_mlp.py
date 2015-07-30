@@ -18,9 +18,9 @@ from keras.preprocessing.text import Tokenizer
         python examples/reuters_mlp.py
 '''
 
-max_words = 1000
+max_words = 2000
 batch_size = 100
-nb_epoch = 5
+nb_epoch = 5000
 
 print("Loading data...")
 (X_train, y_train), (X_test, y_test) = reuters.load_data(nb_words=max_words, test_split=0.2)
@@ -45,29 +45,28 @@ Y_test = np_utils.to_categorical(y_test, nb_classes)
 print('Y_train shape:', Y_train.shape)
 print('Y_test shape:', Y_test.shape)
 
-
+print(true_labels.shape)
 
 print("Building model...")
 m = Graph()
 m.add_input(name='input', ndim=2)
 m.add_input(name='true_labels', ndim=2)
 
-dense_output_size = 512
+dense_output_size = 2000
 
 # standard hidden layer:
-m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
-
-m.add_node(Activation('linear'), name='merger', inputs=['dense', 'true_labels'], merge_mode='concat')
+#m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
 
 # add Hierarchical Softmax:
-m.add_node(HierarchicalSoftmax(input_dim=dense_output_size, output_dim=nb_classes),
-           name='HierarchicalSoftmax', input='merger')
+m.add_node(HierarchicalSoftmax(input_dim=max_words, output_dim=nb_classes),
+           name='HierarchicalSoftmax', inputs=['input', 'true_labels'], merge_mode='concat')
 
 m.add_output(name='output', input='HierarchicalSoftmax')
 
 m.compile('SGD', {'output': 'categorical_crossentropy'})
 
-history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train}, validation_data=None, validation_split=None,
-                shuffle=False,
-                 nb_epoch=nb_epoch, batch_size=batch_size, verbose=1)
+history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train},
+                 validation_data=None, validation_split=None,
+                 shuffle=False, nb_epoch=nb_epoch,
+                 batch_size=batch_size, verbose=1)
 

@@ -38,7 +38,7 @@ class HierarchicalSoftmax(Layer):
         self.params = [self.W1, self.b1, self.W2, self.b2]
 
         self.regularizers = []
-        """
+        
         self.W1_regularizer = regularizers.get(W_regularizer)
         self.W2_regularizer = regularizers.get(W_regularizer)
 
@@ -68,7 +68,7 @@ class HierarchicalSoftmax(Layer):
         self.b2_constraint = constraints.get(b_constraint)
 
         self.constraints = [self.W1_constraint, self.b1_constraint, self.W2_constraint, self.b2_constraint]
-        """
+        
         if weights is not None:
             self.set_weights(weights)
 
@@ -89,8 +89,7 @@ class HierarchicalSoftmax(Layer):
         # the true labels have been appended at the end of the data matrix
         # for training. At test time, these will be ignored.
         
-        target_labels = T.cast(X[:,-1], 'int8')
-        true_X = X[:,:-1]
+        true_X, target_labels = X[:,:-1], T.cast(X[:,-1], 'int8')
 
         # propagate input to both levels:
         lev1_activs = self.activation(T.dot(true_X, self.W1) + self.b1)
@@ -99,7 +98,7 @@ class HierarchicalSoftmax(Layer):
         batch_size = true_X.shape[0]
         batch_iter = T.arange(batch_size)
 
-        if train:
+        if train: # this part runs, if I leave out the keras dense layer in between the input and HSoftMax
 
             # we assign a unique path through the graph for each class label:
             level1_idx = target_labels // self.level1_dim
@@ -116,10 +115,10 @@ class HierarchicalSoftmax(Layer):
             # Since we only have a probability for the correct label,
             # we assign a probability of zero to all other labels
             output = T.zeros((batch_size, self.output_dim))
-            
+
             output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
 
-        else:
+        else: # this part throws a genuine error
 
             def _path_probas(idx):
                 lev1_vec, lev2_vec = lev1_activs[idx], lev2_activs[idx]
@@ -127,10 +126,8 @@ class HierarchicalSoftmax(Layer):
                                           sequences=lev1_vec,
                                           non_sequences=lev2_vec)
                 return result.flatten()
-
             output, updates = theano.scan(fn=_path_probas,
                                    sequences=batch_iter)
-
             output[:, :self.output_dim] # truncate superfluous paths
 
         return output
