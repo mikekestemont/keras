@@ -38,7 +38,7 @@ class HierarchicalSoftmax(Layer):
         self.params = [self.W1, self.b1, self.W2, self.b2]
 
         self.regularizers = []
-
+        """
         self.W1_regularizer = regularizers.get(W_regularizer)
         self.W2_regularizer = regularizers.get(W_regularizer)
 
@@ -68,7 +68,7 @@ class HierarchicalSoftmax(Layer):
         self.b2_constraint = constraints.get(b_constraint)
 
         self.constraints = [self.W1_constraint, self.b1_constraint, self.W2_constraint, self.b2_constraint]
-
+        """
         if weights is not None:
             self.set_weights(weights)
 
@@ -88,23 +88,26 @@ class HierarchicalSoftmax(Layer):
         # We assume that, on a previous merge layer (with mode="concat"),
         # the true labels have been appended at the end of the data matrix
         # for training. At test time, these will be ignored.
-        X, y_true = X[:,:-1], T.cast(X[:,-1], 'int8')
+        
+        target_labels = T.cast(X[:,-1], 'int8')
+        true_X = X[:,:-1]
 
         # propagate input to both levels:
-        lev1_activs = self.activation(T.dot(X, self.W1) + self.b1) # (bs x self.level1_dim)
-        lev2_activs = self.activation(T.dot(X, self.W2) + self.b2) # (bs x self.level2_dim)
+        lev1_activs = self.activation(T.dot(true_X, self.W1) + self.b1)
+        lev2_activs = self.activation(T.dot(true_X, self.W2) + self.b2)
 
-        batch_size = X.shape[0]
+        batch_size = true_X.shape[0]
+        batch_iter = T.arange(batch_size)
 
         if train:
 
             # we assign a unique path through the graph for each class label:
-            level1_idx = y_true // self.level1_dim
-            level2_idx = y_true % self.level2_dim
+            level1_idx = target_labels // self.level1_dim
+            level2_idx = target_labels % self.level2_dim
 
             # select relevant activation column:
-            lev1_val = lev1_activs[T.arange(batch_size), level1_idx]
-            lev2_val = lev2_activs[T.arange(batch_size), level2_idx]
+            lev1_val = lev1_activs[batch_iter, level1_idx]
+            lev2_val = lev2_activs[batch_iter, level2_idx]
 
             # multiply the cost
             target_probas = lev1_val * lev2_val
@@ -114,7 +117,7 @@ class HierarchicalSoftmax(Layer):
             # we assign a probability of zero to all other labels
             output = T.zeros((batch_size, self.output_dim))
             
-            output = T.set_subtensor(output[T.arange(batch_size), y_true], target_probas)
+            output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
 
         else:
 
@@ -126,7 +129,7 @@ class HierarchicalSoftmax(Layer):
                 return result.flatten()
 
             output, updates = theano.scan(fn=_path_probas,
-                                   sequences=T.arange(batch_size))
+                                   sequences=batch_iter)
 
             output[:, :self.output_dim] # truncate superfluous paths
 

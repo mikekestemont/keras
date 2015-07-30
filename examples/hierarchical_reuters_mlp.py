@@ -5,7 +5,7 @@ np.random.seed(1337) # for reproducibility
 
 from keras.datasets import reuters
 from keras.models import Graph
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.core import Dense, Dropout, Activation, Merge
 from keras.layers.advanced_activations import HierarchicalSoftmax
 from keras.utils import np_utils
 from keras.preprocessing.text import Tokenizer
@@ -19,7 +19,7 @@ from keras.preprocessing.text import Tokenizer
 '''
 
 max_words = 1000
-batch_size = 32
+batch_size = 100
 nb_epoch = 5
 
 print("Loading data...")
@@ -30,7 +30,7 @@ print(len(X_test), 'test sequences')
 nb_classes = np.max(y_train)+1
 print(nb_classes, 'classes')
 
-y_train = np.array(y_train, dtype='int8')
+true_labels = np.asarray([[y] for y in y_train], dtype='int8')
 
 print("Vectorizing sequence data...")
 tokenizer = Tokenizer(nb_words=max_words)
@@ -45,23 +45,29 @@ Y_test = np_utils.to_categorical(y_test, nb_classes)
 print('Y_train shape:', Y_train.shape)
 print('Y_test shape:', Y_test.shape)
 
+
+
 print("Building model...")
 m = Graph()
 m.add_input(name='input', ndim=2)
-m.add_input(name='true_labels', ndim=1)
+m.add_input(name='true_labels', ndim=2)
+
+dense_output_size = 512
 
 # standard hidden layer:
-m.add_node(Dense(max_words, 512, activation='relu'), name='dense', input='input')
+m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
+
+m.add_node(Activation('linear'), name='merger', inputs=['dense', 'true_labels'], merge_mode='concat')
 
 # add Hierarchical Softmax:
-m.add_node(HierarchicalSoftmax(input_dim=512, output_dim=nb_classes),
-           name='HierarchicalSoftmax', inputs=['dense', 'true_labels'],
-           merge_mode='concat')
+m.add_node(HierarchicalSoftmax(input_dim=dense_output_size, output_dim=nb_classes),
+           name='HierarchicalSoftmax', input='merger')
 
 m.add_output(name='output', input='HierarchicalSoftmax')
 
 m.compile('SGD', {'output': 'categorical_crossentropy'})
 
-history = m.fit({'input': X_train, 'true_labels': y_train, 'output': Y_train},
+history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train}, validation_data=None, validation_split=None,
+                shuffle=False,
                  nb_epoch=nb_epoch, batch_size=batch_size, verbose=1)
 
