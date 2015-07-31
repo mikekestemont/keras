@@ -18,9 +18,9 @@ from keras.preprocessing.text import Tokenizer
         python examples/reuters_mlp.py
 '''
 
-max_words = 2000
+max_words = 5000
 batch_size = 100
-nb_epoch = 5000
+nb_epoch = 10
 
 print("Loading data...")
 (X_train, y_train), (X_test, y_test) = reuters.load_data(nb_words=max_words, test_split=0.2)
@@ -69,4 +69,10 @@ history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train
                  validation_data=None, validation_split=None,
                  shuffle=False, nb_epoch=nb_epoch,
                  batch_size=batch_size, verbose=1)
+
+predictions = m.predict({'input': X_train, 'true_labels': true_labels},
+                 batch_size = batch_size)
+predictions = np_utils.categorical_probas_to_classes(predictions['output'])
+accuracy = np_utils.accuracy(predictions, y_train)
+print(accuracy)
 

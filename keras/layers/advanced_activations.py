@@ -97,7 +97,7 @@ class HierarchicalSoftmax(Layer):
 
         batch_size = true_X.shape[0]
         batch_iter = T.arange(batch_size)
-
+        
         if train: # this part runs, if I leave out the keras dense layer in between the input and HSoftMax
 
             # we assign a unique path through the graph for each class label:
@@ -128,8 +128,8 @@ class HierarchicalSoftmax(Layer):
                 return result.flatten()
             output, updates = theano.scan(fn=_path_probas,
                                    sequences=batch_iter)
-            output[:, :self.output_dim] # truncate superfluous paths
-
+            output = output[:, :self.output_dim] # truncate superfluous paths
+        
         return output
         
 
