@@ -18,9 +18,9 @@ from keras.preprocessing.text import Tokenizer
         python examples/reuters_mlp.py
 '''
 
-max_words = 5000
-batch_size = 100
-nb_epoch = 10
+max_words = 1000
+batch_size = 1
+nb_epoch = 200
 
 print("Loading data...")
 (X_train, y_train), (X_test, y_test) = reuters.load_data(nb_words=max_words, test_split=0.2)
@@ -52,8 +52,6 @@ m = Graph()
 m.add_input(name='input', ndim=2)
 m.add_input(name='true_labels', ndim=2)
 
-dense_output_size = 2000
-
 # standard hidden layer:
 #m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
 
@@ -63,16 +61,16 @@ m.add_node(HierarchicalSoftmax(input_dim=max_words, output_dim=nb_classes),
 
 m.add_output(name='output', input='HierarchicalSoftmax')
 
-m.compile('SGD', {'output': 'categorical_crossentropy'})
+m.compile('adadelta', {'output': 'categorical_crossentropy'})
 
-history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train},
+for i in range(250):
+    history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train},
                  validation_data=None, validation_split=None,
-                 shuffle=False, nb_epoch=nb_epoch,
+                 shuffle=False, nb_epoch=1,
                  batch_size=batch_size, verbose=1)
-
-predictions = m.predict({'input': X_train, 'true_labels': true_labels},
-                 batch_size = batch_size)
-predictions = np_utils.categorical_probas_to_classes(predictions['output'])
-accuracy = np_utils.accuracy(predictions, y_train)
-print(accuracy)
+    predictions = m.predict({'input': X_train, 'true_labels': true_labels},
+                     batch_size = batch_size)
+    predictions = np_utils.categorical_probas_to_classes(predictions['output'])
+    accuracy = np_utils.accuracy(predictions, y_train)
+    print(accuracy)
 

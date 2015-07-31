@@ -97,8 +97,8 @@ class HierarchicalSoftmax(Layer):
 
         batch_size = true_X.shape[0]
         batch_iter = T.arange(batch_size)
-        
-        if train: # this part runs, if I leave out the keras dense layer in between the input and HSoftMax
+
+        if train:
 
             # we assign a unique path through the graph for each class label:
             level1_idx = target_labels // self.level1_dim
@@ -118,18 +118,21 @@ class HierarchicalSoftmax(Layer):
 
             output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
 
-        else: # this part throws a genuine error
+        else:
 
             def _path_probas(idx):
                 lev1_vec, lev2_vec = lev1_activs[idx], lev2_activs[idx]
                 result, updates = theano.scan(fn=lambda k, array_: k * array_,
-                                          sequences=lev1_vec,
-                                          non_sequences=lev2_vec)
+                                              sequences=lev1_vec,
+                                              non_sequences=lev2_vec)
                 return result.flatten()
+
             output, updates = theano.scan(fn=_path_probas,
-                                   sequences=batch_iter)
+                                       sequences=batch_iter)
+            output = T.nnet.softmax(output)
             output = output[:, :self.output_dim] # truncate superfluous paths
-        
+            
+
         return output
         
 
