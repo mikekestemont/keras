@@ -5,8 +5,10 @@ np.random.seed(1337) # for reproducibility
 
 from keras.datasets import reuters
 from keras.models import Graph
+from keras.optimizers import SGD
 from keras.layers.core import Dense, Dropout, Activation, Merge
 from keras.layers.advanced_activations import HierarchicalSoftmax
+from keras.regularizers import l2
 from keras.utils import np_utils
 from keras.preprocessing.text import Tokenizer
 
@@ -18,9 +20,9 @@ from keras.preprocessing.text import Tokenizer
         python examples/reuters_mlp.py
 '''
 
-max_words = 1000
-batch_size = 1
-nb_epoch = 200
+max_words = 5000
+batch_size = 300
+nb_epoch = 1000
 
 print("Loading data...")
 (X_train, y_train), (X_test, y_test) = reuters.load_data(nb_words=max_words, test_split=0.2)
@@ -56,18 +58,19 @@ m.add_input(name='true_labels', ndim=2)
 #m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
 
 # add Hierarchical Softmax:
-m.add_node(HierarchicalSoftmax(input_dim=max_words, output_dim=nb_classes),
+m.add_node(HierarchicalSoftmax(input_dim=max_words, output_dim=nb_classes,
+                               activation='relu', W_regularizer=l2(.01),
+                               W_constraint='nonneg'),
            name='HierarchicalSoftmax', inputs=['input', 'true_labels'], merge_mode='concat')
 
 m.add_output(name='output', input='HierarchicalSoftmax')
 
-m.compile('adadelta', {'output': 'categorical_crossentropy'})
+m.compile('RMSprop', {'output': 'categorical_crossentropy'})
 
 for i in range(250):
     history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train},
-                 validation_data=None, validation_split=None,
-                 shuffle=False, nb_epoch=1,
-                 batch_size=batch_size, verbose=1)
+                 validation_data=None, validation_split=None, nb_epoch=1,
+                 batch_size=batch_size, verbose=1, shuffle=True)
     predictions = m.predict({'input': X_train, 'true_labels': true_labels},
                      batch_size = batch_size)
     predictions = np_utils.categorical_probas_to_classes(predictions['output'])

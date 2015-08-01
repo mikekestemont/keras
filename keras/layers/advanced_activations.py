@@ -13,7 +13,7 @@ class HierarchicalSoftmax(Layer):
         Adapted to run on both GPU and CPU from lisa-groundhog:
         https://github.com/lisa-groundhog/GroundHog/blob/master/groundhog/layers/cost_layers.py
     '''
-    def __init__(self, input_dim, output_dim, init='glorot_uniform', activation='linear',
+    def __init__(self, input_dim, output_dim, init='glorot_uniform', activation='relu',
                  weights=None, name=None, W_regularizer=None, b_regularizer=None,
                  activity_regularizer=None, W_constraint=None, b_constraint=None):
 
@@ -37,6 +37,7 @@ class HierarchicalSoftmax(Layer):
 
         self.params = [self.W1, self.b1, self.W2, self.b2]
 
+        # input params for regularization and constraints apply to both levels:
         self.regularizers = []
         
         self.W1_regularizer = regularizers.get(W_regularizer)
@@ -100,22 +101,20 @@ class HierarchicalSoftmax(Layer):
 
         if train:
 
-            # we assign a unique path through the graph for each class label:
             level1_idx = target_labels // self.level1_dim
             level2_idx = target_labels % self.level2_dim
 
-            # select relevant activation column:
+            # select relevant activation column and apply activation:
             lev1_val = lev1_activs[batch_iter, level1_idx]
             lev2_val = lev2_activs[batch_iter, level2_idx]
-
-            # multiply the cost
+            
+            # multiply both edges cost:
             target_probas = lev1_val * lev2_val
 
             # output is a matrix of predictions, with dimensionality (batch_size, n_out).
             # Since we only have a probability for the correct label,
             # we assign a probability of zero to all other labels
             output = T.zeros((batch_size, self.output_dim))
-
             output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
 
         else:
@@ -131,7 +130,6 @@ class HierarchicalSoftmax(Layer):
                                        sequences=batch_iter)
             output = T.nnet.softmax(output)
             output = output[:, :self.output_dim] # truncate superfluous paths
-            
 
         return output
         
