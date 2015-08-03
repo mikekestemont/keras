@@ -12,6 +12,7 @@ from keras.regularizers import l2
 from keras.utils import np_utils
 from keras.preprocessing.text import Tokenizer
 
+import time
 '''
     Train and evaluate a simple MLP on the Reuters newswire topic classification task.
     GPU run command:
@@ -21,7 +22,7 @@ from keras.preprocessing.text import Tokenizer
 '''
 
 max_words = 5000
-batch_size = 300
+batch_size = 100
 nb_epoch = 1000
 
 print("Loading data...")
@@ -52,27 +53,34 @@ print(true_labels.shape)
 print("Building model...")
 m = Graph()
 m.add_input(name='input', ndim=2)
-m.add_input(name='true_labels', ndim=2)
+m.add_input(name='target_labels', ndim=2)
+
+
+dense_output_size = 512 
 
 # standard hidden layer:
-#m.add_node(Dense(max_words, dense_output_size), name='dense', input='input')
+m.add_node(Dense(max_words, dense_output_size, activation='relu'), name='dense', input='input')
+#m.add_node(Dropout(0.5), name='dropout', input='dense')
 
 # add Hierarchical Softmax:
-m.add_node(HierarchicalSoftmax(input_dim=max_words, output_dim=nb_classes,
+m.add_node(HierarchicalSoftmax(input_dim=dense_output_size, output_dim=nb_classes,
                                activation='relu', W_regularizer=l2(.01),
-                               W_constraint='nonneg'),
-           name='HierarchicalSoftmax', inputs=['input', 'true_labels'], merge_mode='concat')
+                               train_mode='single_target', test_mode='single_target'),
+           name='HierarchicalSoftmax', inputs=['dense', 'target_labels'], merge_mode='concat')
 
 m.add_output(name='output', input='HierarchicalSoftmax')
 
 m.compile('RMSprop', {'output': 'categorical_crossentropy'})
 
 for i in range(250):
-    history = m.fit({'input': X_train, 'true_labels': true_labels, 'output': Y_train},
+    history = m.fit({'input': X_train, 'target_labels': true_labels, 'output': Y_train},
                  validation_data=None, validation_split=None, nb_epoch=1,
                  batch_size=batch_size, verbose=1, shuffle=True)
-    predictions = m.predict({'input': X_train, 'true_labels': true_labels},
+    start = time.time()
+    predictions = m.predict({'input': X_train, 'target_labels': true_labels},
                      batch_size = batch_size)
+    end = time.time()
+    print(end - start)
     predictions = np_utils.categorical_probas_to_classes(predictions['output'])
     accuracy = np_utils.accuracy(predictions, y_train)
     print(accuracy)
