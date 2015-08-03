@@ -14,6 +14,7 @@ class HierarchicalSoftmax(Layer):
         https://github.com/lisa-groundhog/GroundHog/blob/master/groundhog/layers/cost_layers.py
     '''
     def __init__(self, input_dim, output_dim, init='glorot_uniform', activation='relu',
+                 train_mode='single_target', test_mode='all_targets',
                  weights=None, name=None, W_regularizer=None, b_regularizer=None,
                  activity_regularizer=None, W_constraint=None, b_constraint=None):
 
@@ -22,6 +23,15 @@ class HierarchicalSoftmax(Layer):
         self.activation = activations.get(activation)
         self.input_dim = input_dim
         self.output_dim = output_dim
+
+        if train_mode in ('single_target', 'all_targets'):
+            self.train_mode = train_mode
+        else:
+            raise ValueError("Wrong train_mode")
+        if test_mode in ('single_target', 'all_targets'):
+            self.test_mode = test_mode
+        else:
+            raise ValueError("Wrong test_mode")
 
         self.input = T.matrix()
 
@@ -99,7 +109,14 @@ class HierarchicalSoftmax(Layer):
         batch_size = true_X.shape[0]
         batch_iter = T.arange(batch_size)
 
+        # determine which mode to choose:
+        single_target = False
         if train:
+            single_target = (self.train_mode == 'single_target')
+        else:
+            single_target = (self.test_mode == 'single_target')
+
+        if single_target:
 
             level1_idx = target_labels // self.level1_dim
             level2_idx = target_labels % self.level2_dim
