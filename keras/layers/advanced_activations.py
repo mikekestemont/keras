@@ -127,13 +127,14 @@ class HierarchicalSoftmax(Layer):
             
             # multiply both edges cost:
             target_probas = lev1_val * lev2_val
-
+            
+            output = target_probas.dimshuffle(0, 'x')
             # output is a matrix of predictions, with dimensionality (batch_size, n_out).
             # Since we only have a probability for the correct label,
             # we assign a probability of zero to all other labels
-            output = T.zeros((batch_size, self.output_dim))
-            output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
-
+            #output = T.zeros((batch_size, self.output_dim))
+            #output = T.set_subtensor(output[batch_iter, target_labels], target_probas)
+        
         else:
 
             def _path_probas(idx):
@@ -147,7 +148,7 @@ class HierarchicalSoftmax(Layer):
                                        sequences=batch_iter)
             output = T.nnet.softmax(output)
             output = output[:, :self.output_dim] # truncate superfluous paths
-
+        
         return output
         
 
